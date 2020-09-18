@@ -123,11 +123,19 @@ static netdev_tx_t wg_xmit(struct sk_buff *skb, struct net_device *dev)
 	u32 mtu;
 	int ret;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 	if (unlikely(!wg_check_packet_protocol(skb))) {
 		ret = -EPROTONOSUPPORT;
 		net_dbg_ratelimited("%s: Invalid IP packet\n", dev->name);
 		goto err;
 	}
+#else
+	if (unlikely(wg_skb_examine_untrusted_ip_hdr(skb) != skb->protocol)) {
+		ret = -EPROTONOSUPPORT;
+		net_dbg_ratelimited("%s: Invalid IP packet\n", dev->name);
+		goto err;
+	}
+#endif
 
 	peer = wg_allowedips_lookup_dst(&wg->peer_allowedips, skb);
 	if (unlikely(!peer)) {
@@ -262,7 +270,9 @@ static void wg_setup(struct net_device *dev)
 			     max(sizeof(struct ipv6hdr), sizeof(struct iphdr));
 
 	dev->netdev_ops = &netdev_ops;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 	dev->header_ops = &ip_tunnel_header_ops;
+#endif
 	dev->hard_header_len = 0;
 	dev->addr_len = 0;
 	dev->needed_headroom = DATA_PACKET_HEAD_ROOM;

@@ -6,6 +6,8 @@
 #ifndef _WG_QUEUEING_H
 #define _WG_QUEUEING_H
 
+#include <linux/kconfig.h>
+
 #include "peer.h"
 #include <linux/types.h>
 #include <linux/skbuff.h>
@@ -66,11 +68,30 @@ struct packet_cb {
 #define PACKET_CB(skb) ((struct packet_cb *)((skb)->cb))
 #define PACKET_PEER(skb) (PACKET_CB(skb)->keypair->entry.peer)
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 static inline bool wg_check_packet_protocol(struct sk_buff *skb)
 {
 	__be16 real_protocol = ip_tunnel_parse_protocol(skb);
 	return real_protocol && skb->protocol == real_protocol;
 }
+#else
+/* forward-ported from old (-2019) monolithic release, for compatibility with pre-upstreaming kernels. */
+/* Returns either the correct skb->protocol value, or 0 if invalid. */
+static inline __be16 wg_skb_examine_untrusted_ip_hdr(struct sk_buff *skb)
+{
+	if (skb_network_header(skb) >= skb->head &&
+	    (skb_network_header(skb) + sizeof(struct iphdr)) <=
+		    skb_tail_pointer(skb) &&
+	    ip_hdr(skb)->version == 4)
+		return htons(ETH_P_IP);
+	if (skb_network_header(skb) >= skb->head &&
+	    (skb_network_header(skb) + sizeof(struct ipv6hdr)) <=
+		    skb_tail_pointer(skb) &&
+	    ipv6_hdr(skb)->version == 6)
+		return htons(ETH_P_IPV6);
+	return 0;
+}
+#endif
 
 static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
 {

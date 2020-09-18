@@ -56,11 +56,19 @@ static int prepare_skb_header(struct sk_buff *skb, struct wg_device *wg)
 	size_t data_offset, data_len, header_len;
 	struct udphdr *udp;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 	if (unlikely(!wg_check_packet_protocol(skb) ||
 		     skb_transport_header(skb) < skb->head ||
 		     (skb_transport_header(skb) + sizeof(struct udphdr)) >
 			     skb_tail_pointer(skb)))
 		return -EINVAL; /* Bogus IP header */
+#else
+	if (unlikely(wg_skb_examine_untrusted_ip_hdr(skb) != skb->protocol ||
+		     skb_transport_header(skb) < skb->head ||
+		     (skb_transport_header(skb) + sizeof(struct udphdr)) >
+			     skb_tail_pointer(skb)))
+		return -EINVAL; /* Bogus IP header */
+#endif
 	udp = udp_hdr(skb);
 	data_offset = (u8 *)udp - skb->data;
 	if (unlikely(data_offset > U16_MAX ||
@@ -387,7 +395,11 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
 	 */
 	skb->ip_summed = CHECKSUM_UNNECESSARY;
 	skb->csum_level = ~0; /* All levels */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 	skb->protocol = ip_tunnel_parse_protocol(skb);
+#else
+	skb->protocol = wg_skb_examine_untrusted_ip_hdr(skb);
+#endif
 	if (skb->protocol == htons(ETH_P_IP)) {
 		len = ntohs(ip_hdr(skb)->tot_len);
 		if (unlikely(len < sizeof(struct iphdr)))

@@ -1,0 +1,3 @@
+[submodule "tools_module"]
+	path = wolf-wireguard-tools
+	url = ssh://github.com/douzzer/wolf-wireguard-tools
